@@ -5,9 +5,12 @@ from __future__ import print_function
 from __future__ import unicode_literals
 
 import json
+import os
 
 import pytest
 from jsonschema.validators import RefResolver
+from six.moves.urllib.parse import urljoin
+from six.moves.urllib.request import pathname2url
 
 from swagger_spec_validator.common import SwaggerValidationError
 from swagger_spec_validator.validator20 import validate_spec
@@ -423,3 +426,20 @@ def test_highlight_inconsistent_schema_object_validation(minimal_swagger_dict, s
     minimal_swagger_dict.update(swagger_dict_override)
     with pytest.raises(SwaggerValidationError):
         validate_spec(minimal_swagger_dict)
+
+
+def test_ensure_that_python_reference_is_handled_and_replaced_with_file_reference(minimal_swagger_dict):
+    minimal_swagger_dict['definitions'] = {
+        'python_reference': {
+            '$ref': 'python://swagger_spec_validator/schemas/v2.0/schema.json#/definitions/mediaTypeList'
+        }
+    }
+
+    # Specs are valid as #/definitions/mediaTypeList (from swagger_spec_validator/schemas/v2.0/schema.json) is a valid object
+    validate_spec(minimal_swagger_dict)
+
+    expected_file_path = os.path.abspath(os.path.join('swagger_spec_validator', 'schemas', 'v2.0', 'schema.json'))
+    assert minimal_swagger_dict['definitions']['python_reference']['$ref'] == urljoin(
+        'file:',
+        '{}#/definitions/mediaTypeList'.format(pathname2url(expected_file_path)),
+    )

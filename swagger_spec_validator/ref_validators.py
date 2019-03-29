@@ -14,6 +14,10 @@ from jsonschema import validators
 from jsonschema.compat import iteritems
 from jsonschema.validators import Draft4Validator
 from jsonschema.validators import RefResolver
+from pkg_resources import resource_filename
+from six.moves.urllib.parse import urljoin
+from six.moves.urllib.parse import urlparse
+from six.moves.urllib.request import pathname2url
 
 from swagger_spec_validator import common
 
@@ -168,6 +172,25 @@ def deref_and_validate(validator, schema_element, instance, schema,
     """
     if isinstance(instance, dict) and '$ref' in instance and isinstance(instance['$ref'], six.string_types):
         ref = instance['$ref']
+
+        # de-referencing a python reference is equivalent to have a reference to a package_data file of a library
+        # accessible by the current interpreter.
+        # The reference will look like:
+        #   `python://<python package name>/<path as specified in package_data section of setup.py>[#<fragment>]`
+        # The path will be converted to a file:// uri pointing to the file like:
+        #   `file://<path to library in virtual environment>/<path as specified in package_data section of setup.py>[#<fragment>]`
+        if ref.startswith('python://'):
+            uri = urlparse(ref)
+            ref = urljoin(
+                'file:',
+                '{file_url}#{fragment}'.format(
+                    file_url=pathname2url(resource_filename(uri.hostname, uri.path.lstrip('/'))),
+                    fragment=uri.fragment,
+                ),
+            )
+            # Override the content of the instance to avoid endless conversion
+            instance['$ref'] = ref
+
         if ref in visited_refs:
             log.debug("Found cycle in %s", ref)
             return
